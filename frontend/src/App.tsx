@@ -10,11 +10,11 @@ export interface IMessage {
 
 function App() {
     const socketVideoRef = useRef<HTMLVideoElement>(null);
+    const [socketMediaRecorder, setSocketMediaRecorder] = useState<MediaRecorder>();
+    
     const webrtcVideoRef = useRef<HTMLVideoElement>(null);
-
-    const [socketMediaRecorder, setSocketMediaRecorder] =
-        useState<MediaRecorder>();
     const [rtcMediaRecorder, setRtcMediaRecorder] = useState<MediaRecorder>();
+    
     const [socket, setSocket] = useState<WebSocket>();
     const [stream, setStream] = useState<MediaStream>();
 
@@ -58,22 +58,16 @@ function App() {
     };
 
     const handleWebRTCRecordingStart = async () => {
-    
-        const recorder = new MediaRecorder(stream!, {
-            mimeType: mimeCode,
-        });
-        setRtcMediaRecorder(recorder);
-
+        
         const mediaSource = new MediaSource();
-        const blobQueue: Blob[] = []; 
         let sourceBuffer: SourceBuffer | null = null;
+        let blobQueue: Blob[] = [];
 
         const appendBlob = () => {
-
-            console.log("Appending the Blobs...")
             
-            if (blobQueue.length > 0 && !sourceBuffer!.updating && sourceBuffer) {
-                const blob = blobQueue.shift() // removes the first element from the list and returns it
+            if (blobQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
+                const blob = blobQueue.shift();
+
                 blob?.arrayBuffer()
                 .then((arrayBuff: ArrayBuffer) => {
                     sourceBuffer?.appendBuffer(arrayBuff);
@@ -82,49 +76,42 @@ function App() {
 
         }
 
+
+        const recorder = new MediaRecorder(stream!, {
+            mimeType: mimeCode,
+        });
+        setRtcMediaRecorder(recorder);
+
         webrtcVideoRef.current!.src = URL.createObjectURL(mediaSource);
         mediaSource.addEventListener("sourceopen", () => {
 
             sourceBuffer = mediaSource.addSourceBuffer(mimeCode);
+            sourceBuffer.addEventListener("updateend", appendBlob)
 
-            sourceBuffer.addEventListener("updateend", () => {
-                if (blobQueue.length > 0 && !sourceBuffer?.updating) {
-                    appendBlob();
-                }
-            })
-
-        })
+        })        
 
         recorder.start(100);
         recorder.ondataavailable = (event: BlobEvent) => {
             
-            const blob: Blob = event.data; // Maybe the problem is here, we are capturing the blob data so fast that the data we receive from the server quite late camparing to the blobs received
-
+            const blob: Blob = event.data; 
+            
             blob.arrayBuffer()
             .then((arrayBuff: ArrayBuffer) => {
 
-                // Send this arrayBuff to the backend server
                 axios.post("/stream", arrayBuff, {
                     headers: {
-                        "Content-Type": "application/octect-stream"
+                        "Content-Type": "application/octet-stream",
                     },
                     responseType: "arraybuffer"
                 })
                 .then((res: any) => {
 
-                    const arrayBuff: ArrayBuffer = res.data;
+                    const arrayBuff = res.data;
+                    const blob = new Blob([arrayBuff], { type: mimeCode });
 
-                    const newBlob = new Blob([arrayBuff], { type: mimeCode });
+                    blobQueue.push(blob);
+                    appendBlob();
 
-                    blobQueue.push(newBlob);
-
-                    if (blobQueue.length > 0 && !sourceBuffer!.updating) {
-                        appendBlob();
-                    }
-
-                })
-                .catch((error: any) => {
-                    console.log(error.message);
                 })
 
             })
@@ -134,6 +121,7 @@ function App() {
     };
 
     const handleWebRTCRecordingStop = async () => {};
+
 
     useEffect(() => {
         const ws = new WebSocket("ws://localhost:3000");
@@ -176,7 +164,7 @@ function App() {
 
             blobQueue.push(blob);
 
-            if (sourceBuffer && !sourceBuffer.updating) {
+            if (sourceBuffer && !sourceBuffer.updating) {                
                 appendBlob();
             }
         };
