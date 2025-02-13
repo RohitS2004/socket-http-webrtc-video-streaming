@@ -21,8 +21,8 @@ app.post("/stream", (req: Request, res: Response, next: NextFunction) => {
     res.send(arrayBuff);
 })
 
-app.listen(5000, () => {
-    console.log("App is listening on port: ", 5000);
+app.listen(8000, () => {
+    console.log("App is listening on port: ", 8000);
 })
 
 // We will be sending the blobs the the server in a time stamps of 100ms and the server will return it back to the client
